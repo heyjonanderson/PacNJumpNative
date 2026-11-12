@@ -18,28 +18,11 @@ jobs:
           export DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}
           (dkp-pacman -Sy --noconfirm --needed nds-dev || true)
           ls $DEVKITPRO/libnds/lib; which ndstool || ls $DEVKITPRO/tools/bin
-      - name: Where things are
-        continue-on-error: true
-        run: |
-          export DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}
-          ls $DEVKITPRO $DEVKITPRO/calico $DEVKITPRO/calico/share $DEVKITPRO/libnds $DEVKITPRO/devkitARM | head -80
-          cat $DEVKITPRO/devkitARM/ds_rules 2>/dev/null | head -60
-          find $DEVKITPRO -maxdepth 4 \( -name "ds*.specs" -o -name "*.specs" -o -name "ds_rules" -o -name "calico*.h" \) | head -20
-          find $DEVKITPRO/examples -maxdepth 3 -name Makefile 2>/dev/null | head -5
       - name: Build
         run: |
           export DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}
           export DEVKITARM=$DEVKITPRO/devkitARM
           make -C platform/nds
           ls -la platform/nds/*.nds
-      - name: Run it in DeSmuME and read the timings out of RAM
-        continue-on-error: true
-        run: |
-          apt-get update && apt-get install -y --no-install-recommends desmume xvfb xauth gdb-multiarch
-          cd platform/nds
-          for MODE in "--cpu-mode=0 --advanced-timing=1 --rigorous-timing=1" "--cpu-mode=0 --advanced-timing=0 --rigorous-timing=0"; do
-            echo "=== DeSmuME $MODE"
-            xvfb-run -a sh -c "/usr/games/desmume-cli $MODE --disable-sound --disable-limiter --arm9gdb=20000 pacnjump.nds 2>emu.err & P=\$!; sleep 3; timeout 120 gdb-multiarch -batch -ex 'set architecture armv5te' -ex 'file pacnjump.elf' -ex 'target remote localhost:20000'  -ex 'continue &' -ex 'shell sleep 45' -ex interrupt -ex 'shell sleep 3' -ex 'x/12dw &bench_us' -ex kill 2>&1 | tail -12; kill \$P" || true
-          done
       - uses: actions/upload-artifact@v4
         with: { name: "pacnjump-nds-bench-${{ github.run_number }}", path: platform/nds/pacnjump.nds }
