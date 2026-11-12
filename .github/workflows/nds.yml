@@ -39,7 +39,7 @@ jobs:
           cd platform/nds
           for MODE in "--cpu-mode=0 --advanced-timing=1 --rigorous-timing=1" "--cpu-mode=0 --advanced-timing=0 --rigorous-timing=0"; do
             echo "=== DeSmuME $MODE"
-            xvfb-run -a sh -c "/usr/games/desmume-cli $MODE --disable-sound --disable-limiter --arm9gdb=20000 pacnjump.nds 2>emu.err & P=\$!; sleep 4; timeout 240 gdb-multiarch -batch -ex 'set architecture armv5te' -ex 'file pacnjump.elf' -ex 'target remote localhost:20000' -ex 'break bench_done' -ex continue -ex 'print/d bench_us' -ex kill 2>&1 | tail -12; kill \$P" || true
+            xvfb-run -a sh -c "/usr/games/desmume-cli $MODE --disable-sound --disable-limiter --arm9gdb=20000 pacnjump.nds 2>emu.err & P=\$!; sleep 40; timeout 90 gdb-multiarch -batch -ex 'set architecture armv5te' -ex 'file pacnjump.elf' -ex 'target remote localhost:20000'  -ex 'print/d bench_us' -ex kill 2>&1 | tail -12; kill \$P" || true
           done
       - uses: actions/upload-artifact@v4
         with: { name: "pacnjump-nds-bench-${{ github.run_number }}", path: platform/nds/pacnjump.nds }
