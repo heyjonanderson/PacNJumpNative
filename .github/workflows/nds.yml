@@ -38,8 +38,8 @@ jobs:
           apt-get update && apt-get install -y --no-install-recommends desmume xvfb xauth imagemagick tesseract-ocr x11-utils
           cd platform/nds
           ls /usr/games
-          xvfb-run -a -s "-screen 0 1024x768x24" sh -c '/usr/games/desmume-cli --cpu-mode=0 --advanced-timing=1 --rigorous-timing=1 --disable-sound --disable-limiter pacnjump.nds >/dev/null 2>&1 & P=$!; sleep 60; import -window root shot.png; kill $P' || true
-          ls -la shot.png
+          xvfb-run -a -s "-screen 0 1024x768x24" sh -c '/usr/games/desmume-cli --cpu-mode=0 --advanced-timing=1 --rigorous-timing=1 --disable-sound --disable-limiter pacnjump.nds 2>emu.err & P=$!; sleep 40; ps aux | grep -c "[d]esmume-cli"; import -window root shot.png; kill $P' || true
+          ls -la shot.png; tail -15 emu.err; xdpyinfo >/dev/null 2>&1 || echo no-x-here
           convert shot.png -resize 250% -colorspace Gray -negate shot_neg.png
           convert shot.png -resize 250% -colorspace Gray shot_pos.png
           for f in shot_pos.png shot_neg.png; do echo "== $f"; tesseract $f - --psm 6 2>/dev/null | head -30; done
