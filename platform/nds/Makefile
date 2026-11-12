@@ -4,21 +4,22 @@ $(error DEVKITARM is not set)
 endif
 DEVKITPRO ?= /opt/devkitpro
 LIBNDS    ?= $(DEVKITPRO)/libnds
+CALICO    ?= $(DEVKITPRO)/calico
 export PATH := $(DEVKITPRO)/tools/bin:$(DEVKITARM)/bin:$(PATH)
 
 TARGET := pacnjump
 ROOT   := ../..
 SRC    := main.c $(ROOT)/core/pnj_core.c
 ARCH   := -mthumb -mthumb-interwork
-CFLAGS := -std=gnu99 -O2 -Wall -march=armv5te -mtune=arm946e-s -fomit-frame-pointer $(ARCH) -DARM9 -DPNJ_FLOAT -DPNJ_NDS -I$(LIBNDS)/include
-LDFLAGS := -specs=ds_arm9.specs -g $(ARCH) -Wl,-Map,$(TARGET).map
-LIBS   := -L$(LIBNDS)/lib -lnds9 -lm
+CFLAGS := -std=gnu99 -O2 -Wall -march=armv5te -mtune=arm946e-s -fomit-frame-pointer $(ARCH) -D__NDS__ -DARM9 -DPNJ_FLOAT -DPNJ_NDS -I$(LIBNDS)/include -I$(CALICO)/include
+LDFLAGS := -specs=$(CALICO)/share/ds9.specs -g $(ARCH) -Wl,-Map,$(TARGET).map
+LIBS   := -L$(CALICO)/lib -L$(LIBNDS)/lib -lnds9 -lcalico_ds9 -lm
 CC     := arm-none-eabi-gcc
 
 all: $(TARGET).nds
 
 $(TARGET).nds: $(TARGET).elf
-	ndstool -c $@ -9 $<
+	ndstool -c $@ -9 $< -7 $(CALICO)/bin/ds7_maine.elf -b $(CALICO)/share/nds-icon.bmp "Pac'N-Jump;core benchmark;built with devkitARM"
 
 $(TARGET).elf: $(SRC:.c=.o)
 	$(CC) $(LDFLAGS) $^ $(LIBS) -o $@
