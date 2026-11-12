@@ -6,6 +6,9 @@
 #include "../../core/pnj_core.h"
 
 static pnj_game G;
+/* Results are also left in RAM so a debugger can read them without a screen: bench_us[case * 2] is the step time, [case * 2 + 1] step plus draw list, in microseconds. */
+volatile unsigned bench_us[16];
+__attribute__((noinline, target("arm"))) void bench_done(void) { __asm__ volatile("nop"); }
 
 static u32 us(u32 ticks) { return (u32)(((unsigned long long)ticks * 1000000ull) / BUS_CLOCK); }
 
@@ -25,9 +28,11 @@ int main(void) {
             cpuStartTiming(0); pnj_build_draw(&G); tdraw += cpuEndTiming();
             if (G.over) { pnj_new(&G, r, stage); G.start_level = level; }
         }
-        printf("%3d   %3d  %5lu  %6lu\n", stage + 1, level, (unsigned long)us(tstep / steps), (unsigned long)us((tstep + tdraw) / steps));
+        bench_us[c * 2] = us(tstep / steps); bench_us[c * 2 + 1] = us((tstep + tdraw) / steps);
+        printf("%3d   %3d  %5lu  %6lu\n", stage + 1, level, (unsigned long)bench_us[c * 2], (unsigned long)bench_us[c * 2 + 1]);
     }
     printf("\nDone. Compare with 25000 us.\n");
+    bench_done();
     while (1) swiWaitForVBlank();
     return 0;
 }

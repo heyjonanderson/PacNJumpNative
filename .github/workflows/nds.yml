@@ -32,16 +32,14 @@ jobs:
           export DEVKITARM=$DEVKITPRO/devkitARM
           make -C platform/nds
           ls -la platform/nds/*.nds
-      - name: Run it in DeSmuME and read the screen
+      - name: Run it in DeSmuME and read the timings out of RAM
         continue-on-error: true
         run: |
-          apt-get update && apt-get install -y --no-install-recommends desmume xvfb xauth imagemagick tesseract-ocr x11-utils
+          apt-get update && apt-get install -y --no-install-recommends desmume xvfb xauth gdb-multiarch
           cd platform/nds
-          ls /usr/games
-          xvfb-run -a -s "-screen 0 1024x768x24" sh -c '/usr/games/desmume-cli --cpu-mode=0 --advanced-timing=1 --rigorous-timing=1 --disable-sound --disable-limiter pacnjump.nds 2>emu.err & P=$!; sleep 40; ps aux | grep -c "[d]esmume-cli"; import -window root shot.png; kill $P' || true
-          ls -la shot.png; tail -15 emu.err; xdpyinfo >/dev/null 2>&1 || echo no-x-here
-          convert shot.png -resize 250% -colorspace Gray -negate shot_neg.png
-          convert shot.png -resize 250% -colorspace Gray shot_pos.png
-          for f in shot_pos.png shot_neg.png; do echo "== $f"; tesseract $f - --psm 6 2>/dev/null | head -30; done
+          for MODE in "--cpu-mode=0 --advanced-timing=1 --rigorous-timing=1" "--cpu-mode=0 --advanced-timing=0 --rigorous-timing=0"; do
+            echo "=== DeSmuME $MODE"
+            xvfb-run -a sh -c "/usr/games/desmume-cli $MODE --disable-sound --disable-limiter --arm9gdb=20000 pacnjump.nds 2>emu.err & P=\$!; sleep 4; timeout 240 gdb-multiarch -batch -ex 'set architecture armv5te' -ex 'file pacnjump.elf' -ex 'target remote localhost:20000' -ex 'break bench_done' -ex continue -ex 'print/d bench_us' -ex kill 2>&1 | tail -12; kill \$P" || true
+          done
       - uses: actions/upload-artifact@v4
         with: { name: "pacnjump-nds-bench-${{ github.run_number }}", path: platform/nds/pacnjump.nds }
