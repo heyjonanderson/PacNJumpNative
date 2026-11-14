@@ -11,12 +11,15 @@
  */
 #ifdef PNJ_DC
 #include "../dc/dc_sdl.h"            /* KallistiOS has no SDL3: a small stand-in for the calls used here, and the PVR drawing layer */
+#elif defined(PNJ_NDS)
+#include "../nds/nds_sdl.h"          /* Nintendo DS: the same kind of stand-in on libnds, drawing with the 3D hardware across both screens */
 #else
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #endif
-#ifdef PNJ_DC
+#if defined(PNJ_DC) || defined(PNJ_NDS)
 #define PNJ_NOIMPORT 1               /* no APK import on the console: the web builder makes the pack */
+#define PNJ_SHIM 1                   /* drawing and events come from a stand-in for SDL (dc_sdl.h, nds_sdl.h) */
 #endif
 #ifdef PNJ_N3DS
 #include "../n3ds/n3ds_gfx.h"        /* swaps SDL's window and renderer calls for citro2d; see that file */
@@ -31,10 +34,12 @@
 #include <math.h>
 #include <ctype.h>
 
+#ifndef PNJ_NDS                      /* the DS never decodes a PNG: its textures are ready-made pages (nds_gfx.h) */
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
 #define STBI_NO_STDIO
 #include "stb_image.h"
+#endif
 
 #include "../../core/pnj_core.h"
 #include "../../core/pnj_input.h"
@@ -92,9 +97,16 @@ static unsigned char *read_asset(const char *name, size_t *size) {
     return 0;
 }
 
+#ifdef PNJ_NDS
+#include "../nds/nds_audio.h"
+#else
 #include "audio.h"
+#endif
 
 static SDL_Texture *get_tex(SDL_Renderer *r, int i) {
+#ifdef PNJ_NDS
+    (void)r; SDL_Texture *nt = nds_tex(i); TEXW[i] = nt->w; return nt;      /* a handle only: the pixels are looked up in the stage's page when it is drawn */
+#else
     if (TEX[i]) return TEX[i];
     if (TEXW[i] < 0) return 0;                              /* failed before */
 #ifdef PNJ_DC
@@ -146,6 +158,7 @@ static SDL_Texture *get_tex(SDL_Renderer *r, int i) {
     stbi_image_free(px);
     TEX[i] = t; TEXW[i] = w;
     return t;
+#endif
 }
 
 /* draw sprite id centred at (x,y); col/row/vrow pick animation cells like the web version */
@@ -240,7 +253,11 @@ static void reset_assets(void) {                      /* after a new pack arrive
     for (int i = 0; i < PNJ_NTEX; i++) { if (TEX[i]) SDL_DestroyTexture(TEX[i]); TEX[i] = 0; TEXW[i] = 0; }
     if (aud_dev) { mus_want[0] = 0; audio_music_flush(); audio_load_all(); }
 }
+#ifdef PNJ_NDS
+static int data_present(void) { return pack_has("nds/stage1.ndp"); }
+#else
 static int data_present(void) { size_t n; unsigned char *b = read_asset("sysparts.png", &n); free(b); return b != NULL; }
+#endif
 #ifndef PNJ_NOIMPORT
 static int do_import(const char *apk, const char *outpath) {
     char out[620]; char err[240];
@@ -279,7 +296,7 @@ static void scan_for_apk(void) {                      /* Android and Vita: pick 
 #define PNJ_VERSION "dev"
 #endif
 #ifndef __ANDROID__
-#if !defined(__vita__) && !defined(PNJ_N3DS) && !defined(PNJ_DC)
+#if !defined(__vita__) && !defined(PNJ_N3DS) && !defined(PNJ_SHIM)
 static const char *DATA_HELP = "Pac'N-Jump needs the game data from your own copy of the original Android APK.\n\nDrag the APK onto this window, or run:  pnj --import game.apk";
 #endif
 #endif
@@ -419,6 +436,16 @@ static void draw_drop_hint(SDL_Renderer *r) {                /* no game data yet
     tf_text(r, "YOUR OWN ANDROID APK", 160, 300, 1, 170, 170, 190);
     return;
 #endif
+#ifdef PNJ_NDS
+    tf_text(r, "GAME DATA NOT FOUND", 160, 60, 2, 255, 224, 122);
+    tf_text(r, "COPY PNJ_DS.PACK TO THE", 160, 110, 2, 255, 255, 255);
+    tf_text(r, "PACNJUMP FOLDER ON THE", 160, 136, 2, 255, 255, 255);
+    tf_text(r, "SD CARD", 160, 162, 2, 255, 255, 255);
+    tf_text(r, nds_fat_ok ? "SD CARD: OK" : "SD CARD: NOT FOUND", 160, 270, 2, 170, 170, 190);
+    tf_text(r, "MAKE THE FILE FROM YOUR OWN", 160, 330, 2, 170, 170, 190);
+    tf_text(r, "ANDROID APK ON A PC", 160, 356, 2, 170, 170, 190);
+    return;
+#endif
 #if defined(__vita__) || defined(PNJ_N3DS)
     { char path[160]; snprintf(path, sizeof path, "%s", data_dir());
       for (char *c = path; *c; c++) if (*c >= 'a' && *c <= 'z') *c -= 32;
@@ -450,7 +477,7 @@ static void draw_drop_hint(SDL_Renderer *r) {                /* no game data yet
 /* ---------- frame ---------- */
 #include "menus.h"
 
-#if !defined(PNJ_N3DS) && !defined(PNJ_DC)
+#if !defined(PNJ_N3DS) && !defined(PNJ_SHIM)
 /* ---------- renderer and HDR state ---------- */
 static int hdr_possible = 1;                                /* 0 once a renderer would not give us linear output (no HDR backend on this system) */
 static SDL_Renderer *make_renderer(SDL_Window *win, int want_hdr) {
@@ -592,6 +619,31 @@ static void present_frame(SDL_Renderer *rr) {
 }
 static void mouse_field(SDL_Window *w, SDL_Renderer *rr, float x, float y, float *lx, float *ly) { (void)w; (void)rr; *lx = x; *ly = y; }
 static void finger_field(SDL_Window *w, SDL_Renderer *rr, float nx, float ny, float *lx, float *ly) { (void)w; (void)rr; *lx = nx * PNJ_W; *ly = ny * PNJ_H; }
+#elif defined(PNJ_NDS)
+/* ---------- Nintendo DS: the field at 0.8 across both screens, one screen drawn per frame (nds_gfx.h) ---------- */
+static int hdr_possible = 0;
+static SDL_Renderer *make_renderer(SDL_Window *win, int want_hdr) { (void)win; (void)want_hdr; return pnj_gfx_open(); }
+static void hdr_poll(SDL_Renderer *r) { (void)r; }
+static SDL_Texture *tgt; static int tgt_w, tgt_h, t_cx, t_cy, applied_orient = -1, applied_scale = -1, applied_int = -1;
+static void orient_apply(SDL_Window *w, SDL_Renderer *rr) { (void)w; (void)rr; SV.orient = 0; }       /* no rotation on the DS */
+static void draw_current(SDL_Renderer *rr) {
+    if (need_data) { draw_drop_hint(rr); return; }
+    hdr_gain = 1.0f;
+    if (ui_mode == UI_PLAY) render(rr); else draw_menu(rr);
+}
+static void present_frame(SDL_Renderer *rr) {
+    if (!need_data) {                                    /* the page for the stage on screen: the one being played, or the one picked in the menus */
+        int scene = ui_mode == UI_PLAY || ui_mode == UI_OVER || (is_opt(ui_mode) && opt_back == UI_PLAY) || (ui_mode == UI_HELP && help_back == UI_PLAY);
+        nds_page_set(scene ? G.stage : sel_stage);
+    }
+    pnj_gfx_begin(rr);
+    draw_current(rr);
+    pnj_gfx_end(rr);
+}
+static void mouse_field(SDL_Window *w, SDL_Renderer *rr, float x, float y, float *lx, float *ly) { (void)w; (void)rr; *lx = x; *ly = y; }
+static void finger_field(SDL_Window *w, SDL_Renderer *rr, float nx, float ny, float *lx, float *ly) {      /* nx, ny: 0..1 over the touch screen, which is the lower half of the field */
+    (void)w; (void)rr; *lx = nx * PNJ_W; *ly = PNJ_H / 2.0f + ny * (PNJ_H / 2.0f);
+}
 #else
 /* ---------- 3DS: one renderer, two screens ---------- */
 static int hdr_possible = 0;
@@ -850,7 +902,7 @@ static double current_tilt(void) {
     return t;
 }
 
-#if defined(PNJ_N3DS) || defined(PNJ_DC)
+#if defined(PNJ_N3DS) || defined(PNJ_SHIM)
 static int selftest(int steps, uint32_t seed, const char *bmp, int stage, int level) { (void)steps; (void)seed; (void)bmp; (void)stage; (void)level; return 2; }
 #else
 static int selftest(int steps, uint32_t seed, const char *bmp, int stage, int level) {
@@ -886,7 +938,7 @@ static int no_audio;                                  /* set at start-up when th
 #else
 #define no_audio 0
 #endif
-#if !defined(PNJ_N3DS) && !defined(PNJ_DC)
+#if !defined(PNJ_N3DS) && !defined(PNJ_SHIM)
 #include "dtx.h"
 /* --dcpack in.pack [--out out.pack]: copies a pack and adds the Dreamcast textures (dc/<sheet>.dtx, see dtx.h). Everything else is copied as it is. */
 static int dcpack(const char *in, const char *outp) {
@@ -975,7 +1027,7 @@ int main(int argc, char *argv[]) {
 #ifdef __vita__
     SDL_SetHint(SDL_HINT_VITA_ENABLE_BACK_TOUCH, "0");     /* the rear pad would send stray taps */
 #endif
-#if defined(PNJ_N3DS) || defined(PNJ_DC)
+#if defined(PNJ_N3DS) || defined(PNJ_SHIM)
     if (!SDL_Init(SDL_INIT_EVENTS)) {                       /* no SDL video on the 3DS: citro2d owns the screens (n3ds_gfx.h) */
 #else
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
@@ -1005,12 +1057,13 @@ int main(int argc, char *argv[]) {
             printf("\r%-34s\r", ""); ok = import_finish();
         }
         printf("%s\n", imp_msg); SDL_Quit(); return ok ? 0 : 1; }
-#if !defined(PNJ_N3DS) && !defined(PNJ_DC)
+#if !defined(PNJ_N3DS) && !defined(PNJ_SHIM)
     if (dcpack_arg) { int rc = dcpack(dcpack_arg, import_out ? import_out : "pnj_dc.pack"); SDL_Quit(); return rc; }
 #else
     (void)dcpack_arg;
 #endif
     if (packinfo) { printf("pack=%s files=%d maps=%d\n", PKN ? pack_path : "(none)", PKN, PK_NMAPS); SDL_Quit(); return PKN ? 0 : 1; }
+#ifndef PNJ_NDS
     if (audiotest) {
         audio_init();
         int ok = 0, n = 0; for (int i = 1; i < 32; i++) if (SFXB[i].buf) ok++; n = ok;
@@ -1020,6 +1073,9 @@ int main(int argc, char *argv[]) {
         printf("audiotest jingle: now=%s pcm_frames=%u (stage music keeps playing if the jingle is not in the pack)\n", mus_name, (unsigned)mus_frames);
         SDL_Quit(); return 0;
     }
+#else
+    (void)audiotest;
+#endif
 #ifndef PNJ_DC
     if (!selftest_steps && !no_audio) audio_init();      /* the Dreamcast loads its audio behind the loading screen below */
 #endif
@@ -1027,7 +1083,7 @@ int main(int argc, char *argv[]) {
 
     if (getenv("SteamDeck") || getenv("SteamGamepadUI")) start_fs = 1;        /* Steam sets these when it launches a game on a Steam Deck */
     if (windowed) start_fs = 0;
-#if defined(PNJ_N3DS) || defined(PNJ_DC)
+#if defined(PNJ_N3DS) || defined(PNJ_SHIM)
     SDL_Window *win = SDL_CreateWindow("Pac'N-Jump", 320, 480, 0);
 #elif defined(__vita__)
     SDL_Window *win = SDL_CreateWindow("Pac'N-Jump", 960, 544, SDL_WINDOW_FULLSCREEN);
@@ -1048,7 +1104,7 @@ int main(int argc, char *argv[]) {
     SDL_Renderer *r = make_renderer(win, applied_hdr);
     if (!r) { fprintf(stderr, "renderer: %s\n", SDL_GetError()); return 1; }
     SDL_SetRenderLogicalPresentation(r, PNJ_W, PNJ_H, SDL_LOGICAL_PRESENTATION_LETTERBOX);
-#if !defined(PNJ_N3DS) && !defined(PNJ_DC)
+#if !defined(PNJ_N3DS) && !defined(PNJ_SHIM)
     SDL_InitSubSystem(SDL_INIT_GAMEPAD);
     { int ng = 0; SDL_JoystickID *ids = SDL_GetGamepads(&ng); for (int i = 0; i < ng; i++) SDL_OpenGamepad(ids[i]); SDL_free(ids); }
 #endif
@@ -1064,7 +1120,7 @@ int main(int argc, char *argv[]) {
         dc_loading("DONE"); ld_note = 0; dc_audio_unhush();
     } else audio_init();
 #endif
-#if !defined(__ANDROID__) && !defined(__vita__) && !defined(PNJ_N3DS) && !defined(PNJ_DC)
+#if !defined(__ANDROID__) && !defined(__vita__) && !defined(PNJ_N3DS) && !defined(PNJ_SHIM)
     if (need_data) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Game data needed", DATA_HELP, win);
 #endif
     if (seed) start_stage(0);
@@ -1077,6 +1133,9 @@ int main(int argc, char *argv[]) {
 #endif
 #ifdef PNJ_DC
         pnj_dc_pump();                                      /* controller -> SDL events, and the audio stream is topped up */
+#endif
+#ifdef PNJ_NDS
+        pnj_nds_pump();                                     /* buttons and the touch screen -> SDL events */
 #endif
         while (SDL_PollEvent(&e)) {
             if (IJ.busy && e.type != SDL_EVENT_QUIT && e.type != SDL_EVENT_DROP_FILE && !(e.type >= SDL_EVENT_WINDOW_FIRST && e.type <= SDL_EVENT_WINDOW_LAST) && e.type != SDL_EVENT_WILL_ENTER_BACKGROUND && e.type != SDL_EVENT_DID_ENTER_FOREGROUND) continue;   /* importing: the window only draws the loader */

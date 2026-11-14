@@ -30,7 +30,7 @@ static unsigned char *pack_read(const char *name, size_t *size) {
 }
 static int pack_has(const char *name) { for (int i = 0; i < PKN; i++) if (!strcmp(PK[i].name, name)) return 1; return 0; }
 
-#ifdef PNJ_N3DS
+#if defined(PNJ_N3DS) || defined(PNJ_NDS)
 #include <sys/stat.h>
 #endif
 /* Where the pack and the save file live. Windows and Linux: next to the program when that folder is writable (everything stays in one
@@ -42,20 +42,24 @@ static const char *data_dir(void) {
     snprintf(data_base, sizeof data_base, "/vmu/a1/");               /* settings and records go on the first memory card; the pack is read from the disc or the SD card (pack_find) */
     return data_base;
 #endif
+#ifdef PNJ_NDS
+    if (!data_base[0]) { snprintf(data_base, sizeof data_base, "/pacnjump/"); mkdir("/pacnjump", 0777); }      /* pack_find sets it to wherever the pack was found */
+    return data_base;
+#endif
 #ifdef PNJ_N3DS
     /* fixed folder on the SD card, made here: SDL's pref path was coming back empty on the 3DS */
     snprintf(data_base, sizeof data_base, "sdmc:/3ds/pacnjump/");
     mkdir("sdmc:/3ds", 0777); mkdir("sdmc:/3ds/pacnjump", 0777);
     return data_base;
 #endif
-#if !defined(__ANDROID__) && !defined(__APPLE__) && !defined(__vita__) && !defined(PNJ_N3DS) && !defined(PNJ_DC)
+#if !defined(__ANDROID__) && !defined(__APPLE__) && !defined(__vita__) && !defined(PNJ_N3DS) && !defined(PNJ_DC) && !defined(PNJ_NDS)
     const char *bp = SDL_GetBasePath();
     if (bp) {
         char t[700]; snprintf(t, sizeof t, "%spnj.tmp", bp);
         FILE *f = fopen(t, "wb"); if (f) { fclose(f); remove(t); snprintf(data_base, sizeof data_base, "%s", bp); return data_base; }
     }
 #endif
-#ifndef PNJ_DC
+#if !defined(PNJ_DC) && !defined(PNJ_NDS)
     char *pp = SDL_GetPrefPath("jon", "pnj"); if (pp) { snprintf(data_base, sizeof data_base, "%s", pp); SDL_free(pp); }
 #endif
     return data_base;
@@ -68,6 +72,13 @@ static int pack_find(const char *arg) {
     static const char *const where[] = { "/cd/pnj.pack", "/sd/pnj.pack", "/pc/pnj.pack", "/rd/pnj.pack", NULL };      /* disc, SD card, dc-tool host folder */
     for (int i = 0; where[i]; i++) if (pack_open(where[i])) return 1;
     (void)arg; return 0;
+#endif
+#ifdef PNJ_NDS
+    /* next to the ROM (launchers start a program in its own folder), then a pacnjump folder on the card. Settings and records are saved in the same folder. */
+    static const char *const nwhere[] = { "", "/pacnjump/", "/", "fat:/pacnjump/", "sd:/pacnjump/", NULL };
+    (void)arg;
+    for (int i = 0; nwhere[i]; i++) { char pp[64]; snprintf(pp, sizeof pp, "%spnj_ds.pack", nwhere[i]); if (pack_open(pp)) { snprintf(data_base, sizeof data_base, "%s", nwhere[i]); data_dir(); return 1; } }
+    return 0;
 #endif
     if (arg && pack_open(arg)) return 1;
     const char *e = getenv("PNJ_PACK"); if (e && pack_open(e)) return 1;

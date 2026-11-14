@@ -1,4 +1,4 @@
-# Builds the Nintendo DS port with devkitARM and libnds. For now it is a benchmark ROM (platform/nds) that times the core on the ARM9; no game data in it.
+# Builds the Nintendo DS port (platform/nds) with devkitARM, calico and libnds. The ROM holds no game data: it reads pnj_ds.pack from the SD card.
 name: DS
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
         run: |
           export DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}
           export DEVKITARM=$DEVKITPRO/devkitARM
-          make -C platform/nds
+          make -C platform/nds VERSION=b${{ github.run_number }}
           ls -la platform/nds/*.nds
       - uses: actions/upload-artifact@v4
         with: { name: "pacnjump-nds-${{ github.run_number }}", path: platform/nds/pacnjump.nds }
