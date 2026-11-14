@@ -204,6 +204,7 @@ static void pnj_nds_pump(void) {
     scanKeys(); b = keysHeld();
     if (b & KEY_TOUCH) { touchPosition tp; touchRead(&tp); tx = tp.px; ty = tp.py; }
 #endif
+    if ((b & NK_SELECT) && !(prev & NK_SELECT) && (b & NK_L)) nds_swap ^= 1;
     for (unsigned i = 0; i < sizeof map / sizeof map[0]; i++) { unsigned m = map[i].k; if ((b & m) != (prev & m)) pnj_push_button(map[i].b, (b & m) != 0); }
     prev = b;
     if (b & NK_TOUCH) { pnj_push_finger(pen ? SDL_EVENT_FINGER_MOTION : SDL_EVENT_FINGER_DOWN, tx / 256.0f, ty / 192.0f); pen = 1; }

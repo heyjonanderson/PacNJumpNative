@@ -224,8 +224,8 @@ static void draw_hud(SDL_Renderer *r) {
     double ex = draw_digits(r, pnj_height(&G), 0, 35);
     SPR(r, 59, ex + 2 + 26, 42 + 12.5);
     int tui = touch_ui_on();
-#ifndef PNJ_N3DS
-    if (tui) SPR(r, 65, 160, 19);                          /* pause button (the tap area stays live when hidden); the 3DS pauses with Start only */
+#if !defined(PNJ_N3DS) && !defined(PNJ_NDS)
+    if (tui) SPR(r, 65, 160, 19);                          /* pause button (the tap area stays live when hidden); the 3DS and DS pause with Start only (the button would be on the top screen) */
 #endif
     if (!tui) return;
     if (ctrl_analog) {

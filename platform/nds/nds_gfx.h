@@ -31,6 +31,7 @@ typedef struct { int cr, cg, cb, ca; int draw_add; float ox, oy, sc; int screen;
 #define SDL_Window pnj_win
 
 static pnj_gfx pnj_gfx_one;
+static int nds_swap;                                         /* L + Select: the two screens trade halves (in case a console or emulator shows them the other way up) */
 static pnj_tex nds_texs[32];
 static pnj_tex *nds_tex(int i) { pnj_tex *t = &nds_texs[i & 31]; if (!t->w) { t->id = i; t->w = t->h = i == 0 ? 256 : 512; t->alpha = 255; t->cr = t->cg = t->cb = 255; } return t; }
 
@@ -242,8 +243,8 @@ static int pnj_gfx_begin(pnj_gfx *g) {
     static int phase;
     while (REG_DISPCAPCNT & DCAP_ENABLE) ;
     phase ^= 1;
-    if (phase) { lcdMainOnBottom(); vramSetBankC(VRAM_C_LCD); vramSetBankD(VRAM_D_SUB_SPRITE); REG_DISPCAPCNT = DCAP_BANK(2) | DCAP_ENABLE | DCAP_SIZE(3); g->screen = 0; }
-    else       { lcdMainOnTop();    vramSetBankD(VRAM_D_LCD); vramSetBankC(VRAM_C_SUB_BG);     REG_DISPCAPCNT = DCAP_BANK(3) | DCAP_ENABLE | DCAP_SIZE(3); g->screen = 1; }
+    if (phase) { lcdMainOnBottom(); vramSetBankC(VRAM_C_LCD); vramSetBankD(VRAM_D_SUB_SPRITE); REG_DISPCAPCNT = DCAP_BANK(2) | DCAP_ENABLE | DCAP_SIZE(3); g->screen = nds_swap; }
+    else       { lcdMainOnTop();    vramSetBankD(VRAM_D_LCD); vramSetBankC(VRAM_C_SUB_BG);     REG_DISPCAPCNT = DCAP_BANK(3) | DCAP_ENABLE | DCAP_SIZE(3); g->screen = !nds_swap; }
     glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrthof32(0, 256 * 8, 192 * 8, 0, -4096, 4096);
     glMatrixMode(GL_MODELVIEW); glLoadIdentity();
     nq_n = 0; nq_pid = 0;
