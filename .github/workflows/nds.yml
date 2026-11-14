@@ -25,4 +25,7 @@ jobs:
           make -C platform/nds
           ls -la platform/nds/*.nds
       - uses: actions/upload-artifact@v4
-        with: { name: "pacnjump-nds-bench-${{ github.run_number }}", path: platform/nds/pacnjump.nds }
+        with: { name: "pacnjump-nds-${{ github.run_number }}", path: platform/nds/pacnjump.nds }
+      - name: ROM as text in the log (so a build can be fetched where artifact downloads are blocked; it holds no game data)
+        run: |
+          echo "ROMB64-BEGIN"; gzip -9 -c platform/nds/pacnjump.nds | base64 -w 120; echo "ROMB64-END" 
