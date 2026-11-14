@@ -24,6 +24,8 @@
 #include <math.h>
 #include <sys/stat.h>
 
+#define PNJ_INTERP 1        /* each screen is redrawn 30 times a second but the game steps at 40: blend the last two steps when drawing (platform/sdl/interp.h) */
+
 #define SDLCALL
 typedef uint8_t Uint8; typedef int8_t Sint8; typedef uint16_t Uint16; typedef int16_t Sint16;
 typedef uint32_t Uint32; typedef int32_t Sint32; typedef uint64_t Uint64; typedef int64_t Sint64;

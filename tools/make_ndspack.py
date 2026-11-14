@@ -33,6 +33,7 @@ TEX = ['bnglogo', 'bndr_logo', 'sysparts', 'stages', 'charaparts'] + ['stage_%d_
 SCALE = 0.8
 PAGE_W, PAGE_H = 1024, 512
 TILE = 128
+FONT_PX = [26, 22, 18, 15, 12, 10, 8]          # glyph cell sizes kept in the page; level 0 is sheet 2, level n is "sheet" 100 + n (NDS_FONT_PX in nds_gfx.h)
 HELP_SPRITES = [18, 19, 105, 106, 107, 115, 116, 117, 151, 152, 153, 154]      # the Help pages show these whatever stage is selected
 
 
@@ -63,20 +64,20 @@ class Sheet:
         self.w, self.h = im.size; self.px = np.array(im)
 
 
-def cut(sheet, rect):
-    """The source rectangle (atlas units) shrunk to SCALE of its on-screen size: RGBA, alpha made 0 or 255."""
+def cut(sheet, rect, size=None, cutoff=112):
+    """The source rectangle (atlas units) shrunk to SCALE of its on-screen size (or to size x size): RGBA, alpha made 0 or 255."""
     x, y, w, h = rect; k = sheet.k
     x0, y0, x1, y1 = int(round(x * k)), int(round(y * k)), int(round((x + w) * k)), int(round((y + h) * k))
     if x0 < 0 or y0 < 0 or x1 > sheet.w or y1 > sheet.h or x1 <= x0 or y1 <= y0: return None
     a = sheet.px[y0:y1, x0:x1].astype(np.float32)
     if not (a[:, :, 3] > 8).any(): return None
-    dw, dh = max(1, int(round(w * SCALE))), max(1, int(round(h * SCALE)))
+    dw, dh = (size, size) if size else (max(1, int(round(w * SCALE))), max(1, int(round(h * SCALE))))
     pm = a.copy(); pm[:, :, :3] *= a[:, :, 3:4] / 255.0
-    im = Image.fromarray(np.clip(pm + 0.5, 0, 255).astype(np.uint8), 'RGBA').resize((dw, dh), Image.LANCZOS)
+    im = Image.fromarray(np.clip(pm + 0.5, 0, 255).astype(np.uint8), 'RGBA').resize((dw, dh), Image.BOX)      # area average: no ringing, so no pale halo on hard edges
     o = np.array(im).astype(np.float32); al = o[:, :, 3:4]
     o[:, :, :3] = np.where(al > 0, o[:, :, :3] * 255.0 / np.maximum(al, 1), 0)
     o = np.clip(o, 0, 255).astype(np.uint8)
-    o[:, :, 3] = np.where(o[:, :, 3] >= 112, 255, 0)
+    o[:, :, 3] = np.where(o[:, :, 3] >= cutoff, 255, 0)
     o[o[:, :, 3] == 0] = 0
     return o
 
@@ -145,7 +146,8 @@ def page_rects(stage, atlas, used, extra):
         if sid in HELP_SPRITES: R.add(sprite_rect(sp))
         if t in sheets and t != 3:
             for (c, r, v) in used.get(sid, ()): R.add(sprite_rect(sp, c, r, v))
-    for i in range(1, 96): R.add((2, (i % 16) * 32, (i // 16) * 32, 32, 32))   # the dotted font: 16 x 6 cells of 32 from ' ' (ftext in menus.h)
+    for i in range(1, 64):                                                      # the dotted font: 16 x 6 cells of 32 from ' ' (ftext in menus.h, which only draws capitals)
+        for lv in range(len(FONT_PX)): R.add((2 if lv == 0 else 100 + lv, (i % 16) * 32, (i // 16) * 32, 32, 32))
     for sid in (126 + 3 * stage, 127 + 3 * stage, 128 + 3 * stage):
         if sid < len(atlas): R.add(sprite_rect(atlas[sid]))
     for c in range(3): R.add(sprite_rect(atlas[92], c))                        # the title screen's hopping Pac-Man
@@ -158,8 +160,9 @@ def build_page(stage, atlas, sheets, used, extra, preview):
     rects = sorted(page_rects(stage, atlas, used, extra))
     cells = []; tiles = []; pals = {}; pal_list = []; tile_px = {}; skipped = 0
     for rc in rects:
-        sh = sheets[rc[0]]
-        img = cut(sh, rc[1:]) if sh else None
+        if rc[0] >= 100: sh = sheets[2]; img = cut(sh, rc[1:], FONT_PX[rc[0] - 100], 96)
+        else:
+            sh = sheets[rc[0]]; img = cut(sh, rc[1:]) if sh else None
         if img is None: skipped += 1; continue
         dh, dw = img.shape[:2]; first = len(tiles)
         nx, ny = (dw + TILE - 1) // TILE, (dh + TILE - 1) // TILE

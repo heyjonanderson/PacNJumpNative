@@ -22,6 +22,8 @@
 #define NDS_PAGE_W 1024
 #define NDS_PAGE_H 512
 #define NDS_MAXQ 1700
+#define NDS_NFONT 7
+static const int NDS_FONT_PX[NDS_NFONT] = { 26, 22, 18, 15, 12, 10, 8 };      /* glyph cell sizes in the page: level 0 is sheet 2 itself, level n is "sheet" 100 + n (make_ndspack.py) */
 
 typedef struct pnj_tex { int id, w, h; int add, alpha, cr, cg, cb; } pnj_tex;
 typedef struct pnj_win { int unused; } pnj_win;
@@ -130,8 +132,15 @@ static void pnj_draw_tex(pnj_gfx *g, pnj_tex *t, const SDL_FRect *src, const SDL
     float cx = dst->x * g->sc + g->ox + hw, cy = dst->y * g->sc + g->oy + hh;
     float rad = angle != 0.0 ? (hw > hh ? hw : hh) * 1.5f : 0.0f;
     if (cy + (rad > 0 ? rad : hh) <= 0 || cy - (rad > 0 ? rad : hh) >= 192 || cx + (rad > 0 ? rad : hw) <= 0 || cx - (rad > 0 ? rad : hw) >= 256) return;   /* not on this screen */
-    int sw = (int)src->w, sh = (int)src->h, subx, suby;
-    const nd_cell *c = nd_find(t->id, (int)src->x, (int)src->y, sw, sh, &subx, &suby);
+    int sw = (int)src->w, sh = (int)src->h, subx = 0, suby = 0, font = 0;
+    const nd_cell *c = NULL;
+    if (t->id == 2 && sw == 32 && sh == 32 && src->y < 192.0f && angle == 0.0) {     /* a glyph of the dotted font: the page holds it ready-made at several sizes, use the nearest */
+        int best = 0; float bd = 1e9f;
+        for (int l = 0; l < NDS_NFONT; l++) { float d = w - (float)NDS_FONT_PX[l]; if (d < 0) d = -d; if (d < bd) { bd = d; best = l; } }
+        if (best) c = nd_find(100 + best, (int)src->x, (int)src->y, sw, sh, &subx, &suby);
+        font = 1;
+    }
+    if (!c) c = nd_find(t->id, (int)src->x, (int)src->y, sw, sh, &subx, &suby);
     if (!c) {
 #ifdef PNJ_NDS_HOST
         { static FILE *mf; static int tried; if (!tried) { tried = 1; const char *mp = getenv("PNJ_NDS_MISSLOG"); if (mp) mf = fopen(mp, "a"); }
@@ -142,6 +151,12 @@ static void pnj_draw_tex(pnj_gfx *g, pnj_tex *t, const SDL_FRect *src, const SDL
     if (sw < 1 || sh < 1) return;
     float kx = (float)c->dw / (float)c->w, ky = (float)c->dh / (float)c->h;            /* texels per sheet unit */
     float rx0 = subx * kx, ry0 = suby * ky, rw = sw * kx, rh = sh * ky;                /* the asked-for rectangle, in the cell's texels */
+    /* One texel per screen pixel wherever the game means "actual size": the size becomes the texel count and the corner lands on a whole pixel.
+       Without this the 3D hardware's nearest-texel sampling drops or doubles a row here and there (ragged platform edges, uneven letters). */
+    if (angle == 0.0 && (font || (w - rw < 0.8f && rw - w < 0.8f && h - rh < 0.8f && rh - h < 0.8f))) {
+        w = rw; h = rh; hw = w * 0.5f; hh = h * 0.5f;
+        cx = floorf(cx - hw + 0.5f) + hw; cy = floorf(cy - hh + 0.5f) + hh;
+    }
     float px = w / rw, py = h / rh;                                                    /* screen pixels per texel */
     float co = 1.0f, si = 0.0f;
     if (angle != 0.0) { float a = (float)(angle * 3.14159265358979 / 180.0); co = cosf(a); si = sinf(a); }
@@ -184,13 +199,16 @@ static pnj_win pnj_win_one;
 #ifndef PNJ_NDS_HOST
 /* ================= the DS itself ================= */
 static int nq_n, nq_pid;
+/* Video memory only takes whole 16-bit writes, and the data can sit at any address in the file (a plain memcpy from an odd place wrote bytes and the
+ * page came out as garbage for every stage whose tables had an odd length). So: one 16-bit write per pair of bytes. */
+static void nds_copy16(u16 *dst, const unsigned char *src, size_t bytes) { for (size_t i = 0; i < bytes / 2; i++) dst[i] = (u16)(src[2 * i] | (src[2 * i + 1] << 8)); }
 static void nq_upload(const unsigned char *pix, const uint16_t *pal, int npal) {
     swiWaitForVBlank();
     vramSetBankA(VRAM_A_LCD); vramSetBankB(VRAM_B_LCD);
-    memcpy((void *)VRAM_A, pix, 128 * 1024); memcpy((void *)VRAM_B, pix + 128 * 1024, 128 * 1024);
+    nds_copy16((u16 *)VRAM_A, pix, 128 * 1024); nds_copy16((u16 *)VRAM_B, pix + 128 * 1024, 128 * 1024);
     vramSetBankA(VRAM_A_TEXTURE_SLOT0); vramSetBankB(VRAM_B_TEXTURE_SLOT1);
     vramSetBankE(VRAM_E_LCD);
-    memcpy((void *)VRAM_E, pal, (size_t)npal * 32);
+    nds_copy16((u16 *)VRAM_E, (const unsigned char *)pal, (size_t)npal * 32);
     vramSetBankE(VRAM_E_TEX_PALETTE);
 }
 static void nq_clear(int r, int g, int b) { glClearColor(r >> 3, g >> 3, b >> 3, 31); }
@@ -266,6 +284,7 @@ static void nq_clear(int r, int g, int b) { for (int y = 0; y < 192; y++) for (i
 static void nq_quad(const float *p, int textured, float u0, float v0, float u1, float v1, int pal, int r, int g, int b, int a) {
     int a5 = (a * 31 + 127) / 255; if (a5 < 1 || hq_n >= NDS_MAXQ) return;
     hq_n++;
+    { static int nor = -1; if (nor < 0) nor = getenv("PNJ_NDS_NORASTER") != NULL; if (nor) return; }      /* cost measurements: everything but the pixels */
     float ex = p[2] - p[0], ey = p[3] - p[1], fx = p[6] - p[0], fy = p[7] - p[1], det = ex * fy - ey * fx;
     if (det > -1e-6f && det < 1e-6f) return;
     float minx = p[0], maxx = p[0], miny = p[1], maxy = p[1];

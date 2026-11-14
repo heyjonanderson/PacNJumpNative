@@ -14,6 +14,13 @@ enum { A_SELECT = 24, A_DECIDE, A_CANCEL, A_GAMEOVER, A_HISCORE, A_EAT_ITEM, A_W
 
 typedef struct { char name[32]; nda_t s; int pin; } nmus_t;
 static nmus_t NMC[3]; static int nmus_cur = -1, nmus_ch = -1, nmus_vol = -1, nmus_paused;
+static int nheld_ch = -1, nheld_slot = -1; static char nheld_name[32];      /* the stage track, paused on its own channel while the power-up jingle plays */
+static void nheld_drop(void) {
+#ifndef PNJ_NDS_HOST
+    if (nheld_ch >= 0) soundKill(nheld_ch);
+#endif
+    nheld_ch = -1; nheld_slot = -1; nheld_name[0] = 0;
+}
 
 static int nda_load(const char *file, nda_t *o) {
     char nm[64]; size_t n = 0; snprintf(nm, sizeof nm, "nds/%s.nda", file);
@@ -36,14 +43,14 @@ static int nmus_get(const char *track) {                    /* the slot holding 
     for (int i = 0; i < 3; i++) if (NMC[i].s.base && !strcmp(NMC[i].name, track)) return i;
     int slot = -1;
     for (int i = 0; i < 3; i++) if (!NMC[i].s.base) { slot = i; break; }
-    if (slot < 0) for (int i = 0; i < 3; i++) if (!NMC[i].pin && i != nmus_cur) { slot = i; break; }
+    if (slot < 0) for (int i = 0; i < 3; i++) if (!NMC[i].pin && i != nmus_cur && i != nheld_slot) { slot = i; break; }
     if (slot < 0) return -1;
     nda_free(&NMC[slot].s); NMC[slot].name[0] = 0;
     if (!nda_load(track, &NMC[slot].s)) return -1;
     snprintf(NMC[slot].name, sizeof NMC[slot].name, "%s", track); NMC[slot].pin = nmus_pinned(track);
     return slot;
 }
-static void audio_music_flush(void) { nmus_stop(); for (int i = 0; i < 3; i++) { nda_free(&NMC[i].s); NMC[i].name[0] = 0; } mus_want[0] = 0; }
+static void audio_music_flush(void) { nheld_drop(); nmus_stop(); for (int i = 0; i < 3; i++) { nda_free(&NMC[i].s); NMC[i].name[0] = 0; } mus_want[0] = 0; }
 static void audio_load_all(void) {
     static const char *names[] = { "jump", "break", "mappy_jump", "eat01", "eat02", "eat03", "eat04", "eat05", "eat06", "eat07", "eat08",
         "eat_enemy", "eat_pow", "miss", "bound", "balloon", "candle", "hat" };       /* slots 1.. match PNJ_SFX_* */
@@ -67,9 +74,23 @@ static void audio_music(const char *track) {
     int want_vol = mus_on ? nds_vol(mus_vol) : 0;
     if (strcmp(track, mus_want)) {
         snprintf(mus_want, sizeof mus_want, "%s", track);
-        if (!track[0]) nmus_stop();
+        if (!track[0]) { nheld_drop(); nmus_stop(); }
+        else if (nheld_ch >= 0 && !strcmp(track, nheld_name)) {          /* the power-up is over: the stage track carries on from where it was */
+            nmus_stop(); nmus_ch = nheld_ch; nmus_cur = nheld_slot; snprintf(mus_name, sizeof mus_name, "%s", track);
+            nheld_ch = -1; nheld_slot = -1; nheld_name[0] = 0; nmus_vol = -1;
+#ifndef PNJ_NDS_HOST
+            soundResume(nmus_ch);
+#endif
+        }
         else if (strcmp(track, mus_name)) {
             int slot = nmus_get(track);
+            if (slot >= 0 && !strcmp(track, "wakawaka") && nmus_ch >= 0 && nheld_ch < 0) {      /* power-up: hold the stage track, do not stop it */
+                nheld_ch = nmus_ch; nheld_slot = nmus_cur; snprintf(nheld_name, sizeof nheld_name, "%s", mus_name);
+#ifndef PNJ_NDS_HOST
+                soundPause(nheld_ch);
+#endif
+                nmus_ch = -1; nmus_cur = -1; mus_name[0] = 0;
+            } else if (slot >= 0 && nheld_ch >= 0) nheld_drop();
             if (slot >= 0) {                                  /* a track that is not in the pack leaves the current one playing */
                 nmus_stop(); nmus_cur = slot; snprintf(mus_name, sizeof mus_name, "%s", track); nmus_vol = want_vol;
 #ifndef PNJ_NDS_HOST
