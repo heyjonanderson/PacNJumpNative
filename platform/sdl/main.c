@@ -438,9 +438,9 @@ static void draw_drop_hint(SDL_Renderer *r) {                /* no game data yet
 #endif
 #ifdef PNJ_NDS
     tf_text(r, "GAME DATA NOT FOUND", 160, 60, 2, 255, 224, 122);
-    tf_text(r, "COPY PNJ_DS.PACK TO THE", 160, 110, 2, 255, 255, 255);
-    tf_text(r, "PACNJUMP FOLDER ON THE", 160, 136, 2, 255, 255, 255);
-    tf_text(r, "SD CARD", 160, 162, 2, 255, 255, 255);
+    tf_text(r, "PUT PNJ_DS.PACK NEXT TO", 160, 110, 2, 255, 255, 255);
+    tf_text(r, "THE ROM ON THE SD CARD,", 160, 136, 2, 255, 255, 255);
+    tf_text(r, "OR USE THE ONE-FILE ROM", 160, 162, 2, 255, 255, 255);
     tf_text(r, nds_fat_ok ? "SD CARD: OK" : "SD CARD: NOT FOUND", 160, 270, 2, 170, 170, 190);
     tf_text(r, "MAKE THE FILE FROM YOUR OWN", 160, 330, 2, 170, 170, 190);
     tf_text(r, "ANDROID APK ON A PC", 160, 356, 2, 170, 170, 190);
@@ -994,6 +994,9 @@ static int dcpack(const char *in, const char *outp) {
 #endif
 
 int main(int argc, char *argv[]) {
+#ifdef PNJ_NDS
+    if (argc > 0 && argv && argv[0] && argv[0][0]) nds_argv0 = argv[0];
+#endif
     const char *dcpack_arg = NULL;
     int selftest_steps = 0; uint32_t seed = 0; const char *bmp = NULL; int st_arg = 0, lv_arg = 0; const char *pack_arg = NULL, *import_arg = NULL, *import_out = NULL; int packinfo = 0, audiotest = 0, start_fs = 0, cli_orient = -1, windowed = 0, cli_hdr = -1;
     for (int i = 1; i < argc; i++) {

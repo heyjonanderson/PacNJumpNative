@@ -1,6 +1,6 @@
 # Nintendo DS (ARM9) build with devkitARM, calico and libnds.   usage: make -C platform/nds   (DEVKITPRO and DEVKITARM set, the nds-dev group installed)
 # The program is the shared shell (platform/sdl/main.c) with nds_sdl.h standing in for SDL; see that file. The ROM holds no game data: it reads
-# pnj_ds.pack (tools/make_ndspack.py) from the SD card.
+# pnj_ds.pack (tools/make_ndspack.py) from the SD card, or from its own tail once tools/make_ndsrom.py has appended it.
 ifeq ($(strip $(DEVKITARM)),)
 $(error DEVKITARM is not set)
 endif
@@ -23,7 +23,7 @@ CC      := arm-none-eabi-gcc
 all: $(TARGET).nds
 
 $(TARGET).nds: $(TARGET).elf
-	ndstool -c $@ -9 $< -7 $(CALICO)/bin/ds7_maine.elf -b $(CALICO)/share/nds-icon.bmp "Pac'N-Jump;native port $(VERSION);needs pnj_ds.pack"
+	ndstool -c $@ -9 $< -7 $(CALICO)/bin/ds7_maine.elf -b $(CALICO)/share/nds-icon.bmp "Pac'N-Jump;native port $(VERSION);needs the game data pack"
 
 $(TARGET).elf: main.o pnj_core.o
 	$(CC) $(LDFLAGS) $^ $(LIBS) -o $@

@@ -3,10 +3,11 @@
 typedef struct { char name[56]; Uint32 off, size; } pk_ent;
 static Uint32 io_u32(SDL_IOStream *f) { Uint32 v = 0; SDL_ReadU32LE(f, &v); return v; }
 static Uint16 io_u16(SDL_IOStream *f) { Uint16 v = 0; SDL_ReadU16LE(f, &v); return v; }
-static pk_ent *PK; static int PKN; static SDL_IOStream *PKF; static char pack_path[512];
+static pk_ent *PK; static int PKN; static SDL_IOStream *PKF; static char pack_path[512]; static Sint64 PKBASE;       /* PKBASE: where the pack starts in its file (0, or inside a DS ROM that carries it) */
 
-static int pack_open(const char *path) {
+static int pack_open_at(const char *path, Sint64 base) {
     SDL_IOStream *f = SDL_IOFromFile(path, "rb"); if (!f) return 0;
+    if (base && SDL_SeekIO(f, base, SDL_IO_SEEK_SET) < 0) { SDL_CloseIO(f); return 0; }
     char magic[8]; Uint32 n;
     if (SDL_ReadIO(f, magic, 8) != 8 || memcmp(magic, "PNJPACK1", 8) || (n = io_u32(f)) == 0 || n > 4096) { SDL_CloseIO(f); return 0; }
     pk_ent *e = (pk_ent *)calloc(n, sizeof *e);
@@ -17,13 +18,14 @@ static int pack_open(const char *path) {
         e[i].off = io_u32(f); e[i].size = io_u32(f);
     }
     if (PKF) SDL_CloseIO(PKF);
-    free(PK); PK = e; PKN = (int)n; PKF = f; snprintf(pack_path, sizeof pack_path, "%s", path);
+    free(PK); PK = e; PKN = (int)n; PKF = f; PKBASE = base; snprintf(pack_path, sizeof pack_path, "%s", path);
     return 1;
 }
+static int pack_open(const char *path) { return pack_open_at(path, 0); }
 static unsigned char *pack_read(const char *name, size_t *size) {
     for (int i = 0; i < PKN; i++) if (!strcmp(PK[i].name, name)) {
         unsigned char *b = (unsigned char *)malloc(PK[i].size ? PK[i].size : 1); if (!b) return 0;
-        if (SDL_SeekIO(PKF, PK[i].off, SDL_IO_SEEK_SET) < 0 || SDL_ReadIO(PKF, b, PK[i].size) != PK[i].size) { free(b); return 0; }
+        if (SDL_SeekIO(PKF, PKBASE + PK[i].off, SDL_IO_SEEK_SET) < 0 || SDL_ReadIO(PKF, b, PK[i].size) != PK[i].size) { free(b); return 0; }
         *size = PK[i].size; return b;
     }
     return 0;
@@ -66,6 +68,39 @@ static const char *data_dir(void) {
 }
 static void data_path(char *out, size_t n, const char *name) { snprintf(out, n, "%s%s", data_dir(), name); }
 
+#ifdef PNJ_NDS
+/* A ROM that carries the pack ends with 16 bytes: "PNJDSEMB", u32 offset of the pack in the file, u32 pack size. */
+static int pack_open_rom(const char *rom) {
+    SDL_IOStream *f = SDL_IOFromFile(rom, "rb"); if (!f) return 0;
+    Sint64 sz = SDL_GetIOSize(f); unsigned char t[16];
+    int ok = sz > 16 && SDL_SeekIO(f, sz - 16, SDL_IO_SEEK_SET) >= 0 && SDL_ReadIO(f, t, 16) == 16 && !memcmp(t, "PNJDSEMB", 8);
+    Uint32 off = 0, len = 0;
+    if (ok) { off = (Uint32)t[8] | ((Uint32)t[9] << 8) | ((Uint32)t[10] << 16) | ((Uint32)t[11] << 24); len = (Uint32)t[12] | ((Uint32)t[13] << 8) | ((Uint32)t[14] << 16) | ((Uint32)t[15] << 24); ok = (Sint64)off + len + 16 <= sz; }
+    SDL_CloseIO(f);
+    if (!ok || !pack_open_at(rom, off)) return 0;
+    const char *sl = strrchr(rom, '/'); size_t n = sl ? (size_t)(sl - rom) + 1 : 0;
+    if (n) { snprintf(data_base, sizeof data_base, "%.*s", (int)n, rom); }
+    else { char cwd[256]; if (getcwd(cwd, sizeof cwd)) { size_t l = strlen(cwd); snprintf(data_base, sizeof data_base, "%s%s", cwd, l && cwd[l - 1] == '/' ? "" : "/"); } else data_base[0] = 0; }
+    data_dir(); return 1;
+}
+static int pack_scan_roms(void) {
+#ifndef PNJ_NDS_HOST
+    static const char *const dirs[] = { "/", "/pacnjump/", "/nds/", "/roms/", "/roms/nds/", "/games/", "/homebrew/", "/_nds/", NULL };
+    for (int i = 0; dirs[i]; i++) {
+        DIR *d = opendir(dirs[i]); if (!d) continue;
+        struct dirent *e; int seen = 0;
+        while ((e = readdir(d)) != NULL && seen++ < 400) {
+            size_t l = strlen(e->d_name); if (l < 5 || strcasecmp(e->d_name + l - 4, ".nds") || l + strlen(dirs[i]) > 400) continue;
+            char path[512]; snprintf(path, sizeof path, "%s%s", dirs[i], e->d_name);
+            if (pack_open_rom(path)) { closedir(d); return 1; }
+        }
+        closedir(d);
+    }
+#endif
+    return 0;
+}
+#endif
+
 /* find a pack: --pack arg, PNJ_PACK env, the data folder, then the current directory */
 static int pack_find(const char *arg) {
 #ifdef PNJ_DC
@@ -74,11 +109,13 @@ static int pack_find(const char *arg) {
     (void)arg; return 0;
 #endif
 #ifdef PNJ_NDS
-    /* next to the ROM (launchers start a program in its own folder), then a pacnjump folder on the card. Settings and records are saved in the same folder. */
-    static const char *const nwhere[] = { "", "/pacnjump/", "/", "fat:/pacnjump/", "sd:/pacnjump/", NULL };
+    /* 1) the ROM itself: tools/make_ndsrom.py appends the pack to the .nds, so one file is the whole game. The launcher passes the ROM's path as argv[0]; failing that, look for a .nds
+       carrying the pack in the usual folders. 2) a loose pnj_ds.pack next to the ROM or in /pacnjump/ (what the PC emulator test uses). Settings and records go in the folder it was found in. */
     (void)arg;
+    if (nds_argv0 && pack_open_rom(nds_argv0)) return 1;
+    static const char *const nwhere[] = { "", "/pacnjump/", "/", "fat:/pacnjump/", "sd:/pacnjump/", NULL };
     for (int i = 0; nwhere[i]; i++) { char pp[64]; snprintf(pp, sizeof pp, "%spnj_ds.pack", nwhere[i]); if (pack_open(pp)) { snprintf(data_base, sizeof data_base, "%s", nwhere[i]); data_dir(); return 1; } }
-    return 0;
+    return pack_scan_roms();
 #endif
     if (arg && pack_open(arg)) return 1;
     const char *e = getenv("PNJ_PACK"); if (e && pack_open(e)) return 1;

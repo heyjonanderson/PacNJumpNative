@@ -23,6 +23,8 @@
 #include <strings.h>
 #include <math.h>
 #include <sys/stat.h>
+#include <dirent.h>
+#include <unistd.h>
 
 #define PNJ_INTERP 1        /* each screen is redrawn 30 times a second but the game steps at 40: blend the last two steps when drawing (platform/sdl/interp.h) */
 
@@ -140,6 +142,8 @@ enum {
 };
 enum { SDL_GAMEPAD_AXIS_LEFTX = 0, SDL_GAMEPAD_AXIS_LEFTY };
 
+static const char *nds_argv0;                   /* the ROM's own path, as the launcher passed it (main sets it) */
+
 /* ---------- file streams (stdio underneath; libfat gives stdio the SD card) ---------- */
 enum { SDL_IO_SEEK_SET = 0 };
 typedef struct SDL_IOStream { FILE *f; } SDL_IOStream;
@@ -150,7 +154,7 @@ static SDL_IOStream *SDL_IOFromFile(const char *path, const char *mode) {
 }
 static Sint64 SDL_GetIOSize(SDL_IOStream *s) { long cur = ftell(s->f); fseek(s->f, 0, SEEK_END); long n = ftell(s->f); fseek(s->f, cur, SEEK_SET); return n; }
 static size_t SDL_ReadIO(SDL_IOStream *s, void *buf, size_t n) { return fread(buf, 1, n, s->f); }
-static Sint64 SDL_SeekIO(SDL_IOStream *s, Sint64 off, int whence) { (void)whence; return fseek(s->f, (long)off, SEEK_SET) == 0 ? off : -1; }
+static Sint64 SDL_SeekIO(SDL_IOStream *s, Sint64 off, int whence) { (void)whence; return fseek(s->f, (long)off, SEEK_SET) == 0 ? off : -1; }   /* from the start, always */
 static bool SDL_CloseIO(SDL_IOStream *s) { fclose(s->f); free(s); return true; }
 static bool SDL_ReadU16LE(SDL_IOStream *s, Uint16 *v) { unsigned char b[2]; if (SDL_ReadIO(s, b, 2) != 2) return false; *v = (Uint16)(b[0] | (b[1] << 8)); return true; }
 static bool SDL_ReadU32LE(SDL_IOStream *s, Uint32 *v) { unsigned char b[4]; if (SDL_ReadIO(s, b, 4) != 4) return false; *v = (Uint32)b[0] | ((Uint32)b[1] << 8) | ((Uint32)b[2] << 16) | ((Uint32)b[3] << 24); return true; }

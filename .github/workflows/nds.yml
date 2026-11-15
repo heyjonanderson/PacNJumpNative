@@ -1,4 +1,4 @@
-# Builds the Nintendo DS port (platform/nds) with devkitARM, calico and libnds. The ROM holds no game data: it reads pnj_ds.pack from the SD card.
+# Builds the Nintendo DS port (platform/nds) with devkitARM, calico and libnds. The ROM holds no game data: it reads pnj_ds.pack from the SD card, or from its own tail after tools/make_ndsrom.py appends it.
 name: DS
 on:
   push:
