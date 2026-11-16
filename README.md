@@ -7,12 +7,12 @@ A fan port of Pac'N-Jump, Namco's 2011 phone game that has since been pulled fro
 ## Features
 
 **On every platform**
-- All 8 stages and 42 level maps, with the original's rules (checked step for step against its game logic).
-- Stage select, high scores, achievements, Help pages and a pause menu.
-- Sound effects and music, each with its own on/off switch and volume slider, and the power-up jingle when you grab a power pellet.
-- Scores and settings are saved.
-- Tate mode (Windows, macOS, Linux, Vita, and Dreamcast): turn the picture 90 degrees and play with the screen on its side, as you would an arcade cabinet.
-- It makes no network connections.
+- All 8 stages and 42 level maps
+- Stage select, high scores, achievements, Help pages and a pause menu
+- Sound effects and music, each with its own on/off switch and volume slider
+- Scores and settings are saved
+- Tate mode (Windows, macOS, Linux, Vita, and Dreamcast): turn the picture 90 degrees and play with the screen on its side
+- It makes no network connections
 
 **Windows, macOS and Linux**
 - Keyboard, mouse, touch screen or game controller, with remappable keys.
@@ -27,11 +27,9 @@ A fan port of Pac'N-Jump, Namco's 2011 phone game that has since been pulled fro
 **PS Vita**
 - Tate mode, with the d-pad turning along with the console.
 - The d-pad and both sticks steer, and buttons can be remapped.
-- The touch screen works for the menus and the on-screen pad.
 
 **Nintendo 3DS**
-- Stereo 3D that follows the 3D slider.
-- Menus and the pause screen use the bottom touch screen at full size.
+- Stereo 3D
 - Circle pad, d-pad or touch steering, with an A/B button swap.
 
 **Sega Dreamcast**
