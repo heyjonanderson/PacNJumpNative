@@ -42,4 +42,17 @@ static inline double pnj_input_tilt(pnj_input *in) {
     }
     return in->ramp;
 }
+
+/* Tilt steering from an accelerometer (Android, Vita). ax, ay are SDL's device-frame readings in m/s^2: x to the right and y toward the top of the
+ * device as it is naturally held. The reading is the reaction to gravity, so it points away from whichever edge is lowest: lowering the right edge
+ * makes x read negative. orient is the screen orientation from the save file (0 standard, 1 tate left, 2 tate right):
+ * game-right lies along the device's +x when standard, +y for tate left (game-right is screen-up), and -y for tate right (screen-down).
+ * Returns the game's tilt in g, positive to the right, with a small dead zone, as the original read its accelerometer. */
+static inline double pnj_tilt_from_accel(double ax, double ay, int orient, int flip) {
+    double a = orient == 1 ? ay : orient == 2 ? -ay : ax;
+    double t = -a / 9.80665; if (flip) t = -t;
+    const double dz = 0.04;
+    if (t > dz) t -= dz; else if (t < -dz) t += dz; else return 0.0;
+    return t > 1.0 ? 1.0 : (t < -1.0 ? -1.0 : t);
+}
 #endif

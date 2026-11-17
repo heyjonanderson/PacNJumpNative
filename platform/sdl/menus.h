@@ -16,7 +16,8 @@ typedef struct { uint32_t magic; int sfx_on, mus_on; float sfx_vol, mus_vol; int
                  int touchui;                /* on-screen touch controls: 0 auto (follow the last input device), 1 always, 2 never */
                  int intscale;               /* 0 smooth scaling, 1 whole-number scale with sharp pixels (desktop) */
                  int hdr;                    /* 0 SDR output, 1 ask for HDR output (desktop; only does anything on an HDR display) */
-                 int ver;                    /* settings revision: 1 = the 3DS defaults to the analog touch pad */ } save_t;
+                 int ver;                    /* settings revision: 1 = the 3DS defaults to the analog touch pad */
+                 int tilt;                   /* steer by tilting the device (Android, Vita): 0 off, 1 on, 2 on with the direction flipped */ } save_t;
 static save_t SV;
 
 /* The last kind of input the player used. It picks the prompt wording ("TOUCH SCREEN" or "PRESS ANYTHING") and, in AUTO, whether the
@@ -29,6 +30,16 @@ static int in_dev = IND_PAD;
 #else
 static int in_dev = IND_KEY;
 #endif
+#if defined(__ANDROID__) || defined(__vita__) || defined(PNJ_TILT_TEST)
+#define PNJ_TILT 1          /* the device has an accelerometer; PNJ_TILT_TEST fakes one on a PC (PNJ_TILT_FAKE="ax,ay") */
+static void tilt_sync(void);
+#endif
+#ifdef PNJ_TILT
+#define PNJ_TILT_KEYS_Y 352
+#else
+#define PNJ_TILT_KEYS_Y 340
+#endif
+static const char *tilt_name(int m) { return m == 1 ? "TILT ON" : m == 2 ? "TILT FLIPPED" : "TILT OFF"; }
 static int touch_ui_on(void) { return SV.touchui == 1 || (SV.touchui == 0 && (in_dev == IND_TOUCH || in_dev == IND_MOUSE)); }
 static const char *touchui_name(int m) { return m == 1 ? "TOUCH UI ON" : m == 2 ? "TOUCH UI OFF" : "TOUCH UI AUTO"; }
 static void ctl_defaults(save_t *s) {
@@ -103,6 +114,10 @@ static char save_path[512];
 static void save_apply(void) {
     sfx_on = SV.sfx_on && SV.sfx_vol > 0; mus_on = SV.mus_on && SV.mus_vol > 0; sfx_vol = SV.sfx_vol; mus_vol = SV.mus_vol * 0.8f;
     ctrl_analog = SV.analog; IN.snappy = SV.snappy;
+#ifdef PNJ_TILT
+    if (SV.tilt < 0 || SV.tilt > 2) SV.tilt = 0;
+    tilt_sync();
+#endif
 }
 static void save_flush_now(void) {
     if (!save_path[0]) return;
@@ -195,7 +210,7 @@ static void digits_right(SDL_Renderer *r, int v, double xr, double ytop) {
 
 /* ---------- hit regions (rebuilt every frame) ---------- */
 enum { H_NONE, H_TITLE, H_PLAY, H_RECORD, H_OPTION, H_BACK, H_PREV, H_NEXT, H_START, H_SFXT, H_MUST, H_SFXS, H_MUSS, H_CTRL, H_SNAP,
-       H_P_OPTION, H_P_EXIT, H_P_RESUME, H_OVER, H_HELP, H_ACH, H_P_HELP, H_QUIT, H_P_QUIT, H_ORIENT, H_KEYS, H_RESET, H_MATCH, H_TOUCHUI, H_SCALE, H_HDR, H_O_SND, H_O_VID, H_O_CTL, H_FS, H_ABSWAP, H_KEY0 };   /* H_KEY0 + row * 3 + slot: a binding box */
+       H_P_OPTION, H_P_EXIT, H_P_RESUME, H_OVER, H_HELP, H_ACH, H_P_HELP, H_QUIT, H_P_QUIT, H_ORIENT, H_KEYS, H_RESET, H_MATCH, H_TOUCHUI, H_SCALE, H_HDR, H_O_SND, H_O_VID, H_O_CTL, H_FS, H_ABSWAP, H_TILT, H_KEY0 };   /* H_KEY0 + row * 3 + slot: a binding box */
 #if !defined(__ANDROID__) && !defined(__IPHONEOS__) && !defined(__vita__) && !defined(PNJ_N3DS) && !defined(PNJ_DC)
 #define PNJ_HAS_QUIT 1      /* desktop only: phones and consoles quit through the system */
 #define PNJ_DESKTOP 1
@@ -502,8 +517,12 @@ static void draw_menu(SDL_Renderer *r) {
             btn(r, SV.snappy ? "ON" : "OFF", 14, 262, 70, 38, H_SNAP, SV.snappy ? 0xffe07a : 0x777777, 13, 0);
             ftext(r, "SNAPPY DIGITAL RESPONSE", 96, 285, 10, row_rgb(H_SNAP, 0xffffff), 1, 1);
         }
+#ifdef PNJ_TILT
+        ftext(r, "TILT", 20, 325, 11, row_rgb(H_TILT, 0xaaaaaa), 1, 1);
+        btn(r, tilt_name(SV.tilt), 150, 304, 164, 38, H_TILT, SV.tilt ? 0xffe07a : menu_fill(H_TILT, 0xb4b4d2), 10, 0);
+#endif
 #if defined(PNJ_DESKTOP) || defined(PNJ_VITA)
-        btn(r, "KEYS", 60, 340, 200, 44, H_KEYS, menu_fill(H_KEYS, 0xb4b4d2), 13, 0);
+        btn(r, "KEYS", 60, PNJ_TILT_KEYS_Y, 200, 44, H_KEYS, menu_fill(H_KEYS, 0xb4b4d2), 13, 0);
 #endif
 #ifdef PNJ_N3DS
         btn(r, SV.pad[ACT_OK] == SDL_GAMEPAD_BUTTON_EAST ? "B: OK  A: BACK" : "A: OK  B: BACK", 60, 340, 200, 44, H_ABSWAP, menu_fill(H_ABSWAP, 0xb4b4d2), 11, 0);
@@ -634,6 +653,9 @@ static void ui_touch(double lx, double ly) {
         case H_MUST: SV.mus_on = !SV.mus_on; save_apply(); audio_play(A_SELECT); break;
         case H_SFXS: case H_MUSS: drag_id = h->id; drag_x = h->x + 8; drag_w = h->w - 16; apply_slider(h->id, lx); break;
         case H_CTRL: SV.analog = !SV.analog; save_apply(); IN.active = 0; touch_dir = 0; audio_play(A_SELECT); break;
+#ifdef PNJ_TILT
+        case H_TILT: SV.tilt = (SV.tilt + 1) % 3; save_apply(); audio_play(A_SELECT); break;
+#endif
         case H_SNAP: SV.snappy = !SV.snappy; save_apply(); audio_play(A_SELECT); break;
         case H_P_OPTION: audio_play(A_DECIDE); opt_back = UI_PLAY; ui_enter(UI_OPTION); break;
         case H_P_EXIT: audio_play(A_CANCEL); paused = 0; ui_enter(UI_STAGES); break;
@@ -689,7 +711,7 @@ static void kb_nav(int dx, int dy) {
             drag_x = hits[i].x + 8; drag_w = hits[i].w - 16; apply_slider(sid, drag_x + drag_w * v); audio_play(A_SELECT); return;
         }
     }
-    if (dx && c->id == H_CTRL) { kb_press(kb_cur); return; }                 /* Left/Right on the control selector flips it */
+    if (dx && (c->id == H_CTRL || c->id == H_TILT)) { kb_press(kb_cur); return; }                 /* Left/Right on the control selector flips it */
     double cx = c->x + c->w / 2.0, cy = c->y + c->h / 2.0, near = 1e18; int bi = -1;
     for (int pass = 0; pass < 2; pass++) {                   /* pass 0: how far to the next row/column; pass 1: nearest control within it */
         double best = 1e18;

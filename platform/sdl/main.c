@@ -841,12 +841,56 @@ static void finger_event(Uint32 type, SDL_FingerID id, double lx, double ly) {
     }
 }
 
+#ifdef PNJ_TILT
+/* Tilt steering. The accelerometer is opened only while the Options row is on. A finger, key, or pad press wins over it; with none held the
+   reading steers (pnj_tilt_from_accel turns it into the game's direction, tate included). */
+static SDL_Sensor *tilt_sensor; static double tilt_f;
+static void tilt_sync(void) {
+    if (SV.tilt && !tilt_sensor) {
+#ifdef PNJ_TILT_TEST
+        tilt_sensor = (SDL_Sensor *)1;
+#else
+        if (!SDL_WasInit(SDL_INIT_SENSOR)) SDL_InitSubSystem(SDL_INIT_SENSOR);
+        int n = 0; SDL_SensorID *ids = SDL_GetSensors(&n);
+        for (int i = 0; ids && i < n; i++) if (SDL_GetSensorTypeForID(ids[i]) == SDL_SENSOR_ACCEL) { tilt_sensor = SDL_OpenSensor(ids[i]); break; }
+        SDL_free(ids);
+#endif
+    } else if (!SV.tilt && tilt_sensor) {
+#ifndef PNJ_TILT_TEST
+        SDL_CloseSensor(tilt_sensor);
+#endif
+        tilt_sensor = NULL; tilt_f = 0;
+    }
+}
+static double tilt_read(void) {
+    float d[3] = { 0, 0, 0 }; int ori = SV.orient;
+#ifdef PNJ_TILT_TEST
+    const char *e = getenv("PNJ_TILT_FAKE"); if (e) sscanf(e, "%f,%f", &d[0], &d[1]);
+#else
+    if (!SDL_GetSensorData(tilt_sensor, d, 3)) return 0;
+#ifdef __ANDROID__
+    {   /* sensor axes stay in the device's natural frame whatever the screen does; the game is locked to portrait */
+        SDL_DisplayID did = SDL_GetPrimaryDisplay();
+        SDL_DisplayOrientation nat = SDL_GetNaturalDisplayOrientation(did), cur = SDL_GetCurrentDisplayOrientation(did);
+        if (nat == SDL_ORIENTATION_LANDSCAPE || nat == SDL_ORIENTATION_LANDSCAPE_FLIPPED) ori = cur == SDL_ORIENTATION_PORTRAIT_FLIPPED ? 2 : 1;   /* tablets: game-right lies along the device's y */
+        else if (cur == SDL_ORIENTATION_PORTRAIT_FLIPPED) { d[0] = -d[0]; d[1] = -d[1]; }
+    }
+#endif
+#endif
+    tilt_f += (pnj_tilt_from_accel(d[0], d[1], ori, SV.tilt == 2) - tilt_f) * 0.5;       /* light smoothing, hands are not steady */
+    return tilt_f;
+}
+#endif
+
 static double current_tilt(void) {
     int sl = IN.left, sr = IN.right;                       /* keyboard state; touch side and controller are merged in for this step only */
     IN.left = sl || (!ctrl_analog && touch_dir < 0) || pad_l || stick_l;
     IN.right = sr || (!ctrl_analog && touch_dir > 0) || pad_r || stick_r;
     double t = pnj_input_tilt(&IN);
     IN.left = sl; IN.right = sr;
+#ifdef PNJ_TILT
+    if (SV.tilt && tilt_sensor) { if (t == 0 && !IN.active && !touch_dir) t = tilt_read(); else tilt_f = 0; }
+#endif
     return t;
 }
 
