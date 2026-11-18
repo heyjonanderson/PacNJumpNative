@@ -18,17 +18,17 @@ jobs:
           export DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}
           dkp-pacman -Sy --noconfirm || true
           echo "== wiiu and wut packages"; dkp-pacman -Sl 2>/dev/null | grep -iE "wiiu|wut|sdl" || true
-          echo "== details"; for p in wiiu-sdl2 wiiu-sdl2_mixer wut wut-tools wiiu-dev; do dkp-pacman -Si $p 2>/dev/null | grep -E "^(Name|Version|Description|Depends On|Installed Size)" ; echo; done
+          echo "== details"; for p in wiiu-sdl2 wiiu-sdl2_mixer wut wut-tools wiiu-dev; do dkp-pacman -Si $p 2>/dev/null | grep -E "^(Name|Version|Description|Depends On|Installed Size)" || true; echo; done
           dkp-pacman -S --noconfirm --needed wiiu-dev wiiu-sdl2 || true
-          echo "== sdl2 files"; ls $DEVKITPRO/portlibs/wiiu/include/SDL2 2>/dev/null | head -5; ls $DEVKITPRO/portlibs/wiiu/lib | head; grep -hE "define SDL_(MAJOR|MINOR|PATCH)_VERSION" $DEVKITPRO/portlibs/wiiu/include/SDL2/SDL_version.h 2>/dev/null
-          echo "== sdl2 wiiu video and audio symbols"; strings $DEVKITPRO/portlibs/wiiu/lib/libSDL2.a 2>/dev/null | grep -iE "^(WIIU_|GX2|VPAD|KPAD|AX)[A-Za-z_]*" | sort -u | head -80
-          echo "== tools"; ls $DEVKITPRO/tools/bin | head -40
+          echo "== sdl2 files"; ls $DEVKITPRO/portlibs/wiiu/include/SDL2 2>/dev/null | head -5; ls $DEVKITPRO/portlibs/wiiu/lib | head; grep -hE "define SDL_(MAJOR|MINOR|PATCH)_VERSION" $DEVKITPRO/portlibs/wiiu/include/SDL2/SDL_version.h 2>/dev/null || true
+          echo "== sdl2 wiiu video and audio symbols"; strings $DEVKITPRO/portlibs/wiiu/lib/libSDL2.a 2>/dev/null | grep -iE "^(WIIU_|GX2|VPAD|KPAD|AX)[A-Za-z_]*" | sort -u | head -80 || true
+          echo "== tools"; ls $DEVKITPRO/tools/bin | head -40 || true
       - name: Compiler
         run: |
           export DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}; export PATH=$DEVKITPRO/devkitPPC/bin:$PATH
           powerpc-eabi-gcc -v 2>&1 | tail -3
-          powerpc-eabi-gcc -Q --help=target 2>/dev/null | grep -E "mcpu|mhard-float|msoft-float|mfused-madd" | head
-          powerpc-eabi-gcc -Q --help=common 2>/dev/null | grep -E "ffp-contract"
+          powerpc-eabi-gcc -Q --help=target 2>/dev/null | grep -E "mcpu|mhard-float|msoft-float|mfused-madd" | head || true
+          powerpc-eabi-gcc -Q --help=common 2>/dev/null | grep -E "ffp-contract" || true
       - name: The core builds here
         run: |
           export DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}; export PATH=$DEVKITPRO/devkitPPC/bin:$PATH
