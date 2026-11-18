@@ -27,9 +27,11 @@ jobs:
         run: |
           export DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}
           S=$(strings $DEVKITPRO/portlibs/wiiu/lib/libSDL2.a 2>/dev/null)
-          echo "== VPAD, KPAD, WPAD and GX2 entry points"; echo "$S" | grep -E "^(VPAD|KPAD|WPAD|GX2Set(TV|DRC)Buffer|GX2CopySurface|GX2Init|GX2SetTV|GX2SetDRC|GX2WaitForVsync|GX2SwapScanBuffers|OSSetSwap)[A-Za-z0-9_]*$" | sort -u | tr '\n' ' ' || true
-          echo; echo "== sensor, accel, gyro, rotate, window mentions"; echo "$S" | grep -iE "accel|gyro|sensor" | sort -u | head -20 || true
+          echo "== VPAD, KPAD, WPAD and GX2 entry points"; echo "$S" | grep -aE "^(VPAD|KPAD|WPAD|GX2Set(TV|DRC)Buffer|GX2CopySurface|GX2Init|GX2SetTV|GX2SetDRC|GX2WaitForVsync|GX2SwapScanBuffers|OSSetSwap)[A-Za-z0-9_]*$" | sort -u | tr '\n' ' ' || true
+          echo; echo "== sensor, accel, gyro, rotate, window mentions"; echo "$S" | grep -aiE "accel|gyro|sensor|VPAD" | sort -u | head -20 || true
           echo "== wuhbtool and friends"; ls $DEVKITPRO/tools/bin | tr '\n' ' ' || true
+          echo; echo "== objects in libSDL2.a for wiiu"; $DEVKITPRO/devkitPPC/bin/powerpc-eabi-ar t $DEVKITPRO/portlibs/wiiu/lib/libSDL2.a | grep -i wiiu | tr '\n' ' ' || true
+          echo; echo "== VPAD/KPAD/GX2 symbols in the wiiu objects"; $DEVKITPRO/devkitPPC/bin/powerpc-eabi-nm -A $DEVKITPRO/portlibs/wiiu/lib/libSDL2.a 2>/dev/null | grep -E " U (VPAD|KPAD|WPAD|GX2Set(TV|DRC)|GX2CopySurface|GX2CalcTV|GX2CalcDRC|GX2WaitForVsync|GX2SwapScan)[A-Za-z0-9_]*$" | sed 's/.* U //' | sort -u | tr '\n' ' ' || true
           echo; echo "== sdl wiiu source file names"; echo "$S" | grep -E "SDL_wiiu|wiiu.*\.c$" | sort -u | head -30 || true
       - name: Compiler
         run: |
