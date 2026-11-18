@@ -23,6 +23,14 @@ jobs:
           echo "== sdl2 files"; ls $DEVKITPRO/portlibs/wiiu/include/SDL2 2>/dev/null | head -5; ls $DEVKITPRO/portlibs/wiiu/lib | head; grep -hE "define SDL_(MAJOR|MINOR|PATCH)_VERSION" $DEVKITPRO/portlibs/wiiu/include/SDL2/SDL_version.h 2>/dev/null || true
           echo "== sdl2 wiiu video and audio symbols"; strings $DEVKITPRO/portlibs/wiiu/lib/libSDL2.a 2>/dev/null | grep -iE "^(WIIU_|GX2|VPAD|KPAD|AX)[A-Za-z_]*" | sort -u | head -80 || true
           echo "== tools"; ls $DEVKITPRO/tools/bin | head -40 || true
+      - name: SDL2 for Wii U, what it touches
+        run: |
+          export DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}
+          S=$(strings $DEVKITPRO/portlibs/wiiu/lib/libSDL2.a 2>/dev/null)
+          echo "== VPAD, KPAD, WPAD and GX2 entry points"; echo "$S" | grep -E "^(VPAD|KPAD|WPAD|GX2Set(TV|DRC)Buffer|GX2CopySurface|GX2Init|GX2SetTV|GX2SetDRC|GX2WaitForVsync|GX2SwapScanBuffers|OSSetSwap)[A-Za-z0-9_]*$" | sort -u | tr '\n' ' ' || true
+          echo; echo "== sensor, accel, gyro, rotate, window mentions"; echo "$S" | grep -iE "accel|gyro|sensor" | sort -u | head -20 || true
+          echo "== wuhbtool and friends"; ls $DEVKITPRO/tools/bin | tr '\n' ' ' || true
+          echo; echo "== sdl wiiu source file names"; echo "$S" | grep -E "SDL_wiiu|wiiu.*\.c$" | sort -u | head -30 || true
       - name: Compiler
         run: |
           export DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}; export PATH=$DEVKITPRO/devkitPPC/bin:$PATH
