@@ -1,0 +1,37 @@
+# Wii U port probe (platform/wiiu is not written yet): lists what the devkitPro Wii U toolchain offers and checks that the portable core builds and links under devkitPPC.
+name: WiiU
+on:
+  push:
+    branches: ['wiiu']
+    paths-ignore: ['web/**', 'android/**', '*.md']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitppc:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Packages
+        run: |
+          export DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}
+          dkp-pacman -Sy --noconfirm || true
+          echo "== wiiu and wut packages"; dkp-pacman -Sl 2>/dev/null | grep -iE "wiiu|wut|sdl" || true
+          echo "== details"; for p in wiiu-sdl2 wiiu-sdl2_mixer wut wut-tools wiiu-dev; do dkp-pacman -Si $p 2>/dev/null | grep -E "^(Name|Version|Description|Depends On|Installed Size)" ; echo; done
+          dkp-pacman -S --noconfirm --needed wiiu-dev wiiu-sdl2 || true
+          echo "== sdl2 files"; ls $DEVKITPRO/portlibs/wiiu/include/SDL2 2>/dev/null | head -5; ls $DEVKITPRO/portlibs/wiiu/lib | head; grep -hE "define SDL_(MAJOR|MINOR|PATCH)_VERSION" $DEVKITPRO/portlibs/wiiu/include/SDL2/SDL_version.h 2>/dev/null
+          echo "== sdl2 wiiu video and audio symbols"; strings $DEVKITPRO/portlibs/wiiu/lib/libSDL2.a 2>/dev/null | grep -iE "^(WIIU_|GX2|VPAD|KPAD|AX)[A-Za-z_]*" | sort -u | head -80
+          echo "== tools"; ls $DEVKITPRO/tools/bin | head -40
+      - name: Compiler
+        run: |
+          export DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}; export PATH=$DEVKITPRO/devkitPPC/bin:$PATH
+          powerpc-eabi-gcc -v 2>&1 | tail -3
+          powerpc-eabi-gcc -Q --help=target 2>/dev/null | grep -E "mcpu|mhard-float|msoft-float|mfused-madd" | head
+          powerpc-eabi-gcc -Q --help=common 2>/dev/null | grep -E "ffp-contract"
+      - name: The core builds here
+        run: |
+          export DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}; export PATH=$DEVKITPRO/devkitPPC/bin:$PATH
+          for v in "" "-DPNJ_FLOAT"; do
+            powerpc-eabi-gcc -std=gnu99 -O2 -ffp-contract=off -mcpu=750 $v -c core/pnj_core.c -o /tmp/core.o && powerpc-eabi-size /tmp/core.o
+          done
